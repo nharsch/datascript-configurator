@@ -76,6 +76,23 @@
    first
    ))
 
+;; TODO formalize this?
+(def product-keys
+  (->
+   @db-cache
+   :products
+   first
+   keys
+   vec))
+
+(pco/defresolver slug-resolver [{:keys [slug products]}]
+  {::pco/output product-keys}
+  (->>
+   products
+   (filter (fn [p] (== slug (:slug p))))
+   first
+   ))
+
 (product-resolver {:id 1
                    :products (:products @db-cache)})
 
@@ -85,39 +102,19 @@
                           (:products @db-cache) ;; TODO: load in via API
                           )
     product-resolver
+    slug-resolver
     ]))
 
-(p.eql/process env [{:products [:slug]}])
-;; => #{:products [#:product{:slug "test1"} #:product{:slug "test2"}]}
-(p.eql/process env [{:products [:id]}])
-(p.eql/process env [{:products [:title]}])
-;; => #:configurator.frontend.app{:products [#:product{:id 1} #:product{:id 2}]}
-(p.eql/process env [{[:id 1] [:slug]}])
-(p.eql/process env [{[:id 1] [:bundles]}])
-;; => {[:product/id 1] {}}
 
 (comment
-
-
-  (p.eql/process opt-env [{::products [:id 1]}])
-
-  @db-cache
+  (p.eql/process env [{:products [:slug]}])
+  (p.eql/process env [{:products [:id]}])
+  (p.eql/process env [{:products [:title]}])
+  (p.eql/process env [{[:id 1] [:slug]}])
+  (p.eql/process env [{[:id 7] [:title]}])
+  (p.eql/process env [{[:id 7] product-keys}])
+  (p.eql/process env [{[:slug "grandpillow"] [:id]}])
   )
-
-
-;; (def parser
-;;   (p/parser {::p/env    {::p/reader     [p/map-reader
-;;                                          pc/reader2
-;;                                          pc/ident-reader
-;;                                          pc/index-reader]
-;;                          ::p/placeholder-prefixes #{">"}
-;;                          }
-;;              ::p/mutate pc/mutate
-;;              ::p/plugins [(pc/connect-plugin {::pc/register resolvers})
-;;                           p/error-handler-plugin
-;;                           (p/post-process-parser-plugin p/elide-not-found)
-;;                           ]}))
-
 
 
 (defn main-view []
