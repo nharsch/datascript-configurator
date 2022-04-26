@@ -38,10 +38,11 @@
 
  )
 
+
 ;; TODO:
-;; - [] what is static-table-resolver
 ;; - [] resolve query by hitting API endpoint
 ;; - [] get child ids from children URLs
+;;  - [] look at async-resolver
 ;; - [] get child attrs from child queries
 
 
@@ -132,5 +133,4 @@
     (rdom/render [main-view] root-el)))
 
 (defn init []
-  (mount-root)
-  )
+  (mount-root))
