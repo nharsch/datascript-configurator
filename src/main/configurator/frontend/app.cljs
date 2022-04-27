@@ -40,6 +40,7 @@
 
 
 ;; TODO:
+;; - [] convert default keywords to product/kw
 ;; - [] resolve query by hitting API endpoint
 ;; - [] get child ids from children URLs
 ;;  - [] look at async-resolver
@@ -56,65 +57,84 @@
       (if (= (:status response) 200)
         (:body response)))))
 
+
 (go
   (let [products (<! (get-products))]
     (swap! db-cache assoc :products products)))
- 
+(:products @db-cache)
 
 ;; pathom query/resolvers
 
+(defn ns-key [nms key]
+  (keyword (str nms "/" (name key))))
+(= (ns-key "product" :id) :product/id)
 
-(pco/defresolver product-resolver [{:keys [id products]}]
-  {::pco/output (->
-                  @db-cache
-                  :products
-                  first
-                  keys
-                  vec)}
+(defn ns-key-vec [nms v]
+  (vec (map (partial ns-key nms) v)))
+;; (ns-key-vec "product" [:id :test])
+
+(def orig-product-keys
+  (->> @db-cache
+       :products
+       first
+       keys
+       vec))
+(def output-product-keys (vec (map (partial ns-key "product") orig-product-keys)))
+(def kmap (zipmap orig-product-keys output-product-keys))
+
+
+(defn ns-keys-in-map [nms map]
+  (let [oldkeys (vec (keys map))
+        newkeys (ns-key-vec nms oldkeys)]
+    (clojure.set/rename-keys map (zipmap oldkeys newkeys))))
+(ns-keys-in-map "product" (first (:products @db-cache)))
+
+;; (clojure.set/rename-keys (first (:products @db-cache)) kmap)
+
+
+(pco/defresolver product-resolver [{:keys [product/id products]}]
+  {::pco/output output-product-keys}
   (->>
    products
-   (filter (fn [p] (== id (:id p))))
+   (filter (fn [p] (== id (:product/id p))))
    first
    ))
 
-;; TODO formalize this?
-(def product-keys
-  (->
-   @db-cache
-   :products
-   first
-   keys
-   vec))
+(product-resolver {:product/id 1
+                   :products [{:product/id 1}]})
 
-(pco/defresolver slug-resolver [{:keys [slug products]}]
-  {::pco/output product-keys}
+(pco/defresolver slug-resolver [{:keys [product/slug products]}]
+  {::pco/output output-product-keys}
   (->>
    products
-   (filter (fn [p] (== slug (:slug p))))
+   (filter (fn [p] (== slug (:product/slug p))))
    first
    ))
 
-(product-resolver {:id 1
-                   :products (:products @db-cache)})
+
+(map #((clojure.set/rename-keys % kmap)) (:products @db-cache))
 
 (def env
   (pci/register
+   ; TODO lookup API directly
    [(pbir/constantly-resolver :products
-                          (:products @db-cache) ;; TODO: load in via API
-                          )
+                              (->> @db-cache
+                                   :products
+                                   (map (partial ns-keys-in-map "product"))
+                                   vec))
     product-resolver
-    slug-resolver
-    ]))
+    slug-resolver]
+   ))
 
 
 (comment
-  (p.eql/process env [{:products [:slug]}])
-  (p.eql/process env [{:products [:id]}])
-  (p.eql/process env [{:products [:title]}])
-  (p.eql/process env [{[:id 1] [:slug]}])
-  (p.eql/process env [{[:id 7] [:title]}])
-  (p.eql/process env [{[:id 7] product-keys}])
-  (p.eql/process env [{[:slug "grandpillow"] [:id]}])
+  (p.eql/process env [{:products [:product/slug]}])
+  (p.eql/process env [{:products [:product/id]}])
+  (p.eql/process env [{:products [:product/title]}])
+  (p.eql/process env [{[:product/id 1] [:product/slug]}])
+  (p.eql/process env [{[:product/id 7] [:product/title]}])
+  (p.eql/process env [{[:product/id 7] output-product-keys}])
+  (p.eql/process env [{[:product/slug "grandpillow"] [:product/id]}])
   )
 
 
