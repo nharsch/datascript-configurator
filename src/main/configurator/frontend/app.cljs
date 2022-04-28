@@ -4,11 +4,12 @@
    [cljs.core.async :refer [<!]]
    [cljs-http.client :as http]
    [reagent.dom :as rdom]
-   ;; [:as promesa.core p]
+   [promesa.core :as p]
    [com.wsscode.pathom3.connect.operation :as pco]
    [com.wsscode.pathom3.connect.indexes :as pci]
    [com.wsscode.pathom3.connect.built-in.resolvers :as pbir]
    [com.wsscode.pathom3.interface.eql :as p.eql]
+   [com.wsscode.pathom3.interface.async.eql :as p.a.eql]
    ))
 (comment
   [com.wsscode.pathom3.cache :as p.cache]
@@ -31,12 +32,10 @@
 
 (defonce db-cache (atom {}))
 (comment
-
  (swap! db-cache assoc :products [0 1])
  (reset! db-cache {})
  (:products @db-cache)
  @db-cache
-
  )
 
 
@@ -47,24 +46,11 @@
 ;;  - [] look at async-resolver
 ;; - [] get child attrs from child queries
 
+(defn json-get [url]
+  (p/let [resp (js/fetch url)
+          json (.json resp)]
+    (js->clj json :keywordize-keys true)))
 
-;; for now let's just load all products in
-(defn get-products []
-  (go
-    (let [response (<! (http/get
-                        "https://dev.tempurpedic.com/api/products/"
-                        {:with-credentials? false}
-                        ))]
-      (if (= (:status response) 200)
-        (:body response)))))
-
-
-(go
-  (let [products (<! (get-products))]
-    (swap! db-cache assoc :products products)))
-(:products @db-cache)
-
-;; pathom query/resolvers
 
 (defn ns-key [nms key]
   (keyword (str nms "/" (name key))))
@@ -72,27 +58,71 @@
 
 (defn ns-key-vec [nms v]
   (vec (map (partial ns-key nms) v)))
-;; (ns-key-vec "product" [:id :test])
-
-;; TODO makes these constants. Some of these keys might actually belong to another namespace...
-;; consider using spec to verify
-(def orig-product-keys
-  (->> @db-cache
-       :products
-       first
-       keys
-       vec))
-(def output-product-keys (vec (map (partial ns-key "product") orig-product-keys)))
-(def kmap (zipmap orig-product-keys output-product-keys))
-
 
 (defn ns-keys-in-map [nms map]
   (let [oldkeys (vec (keys map))
         newkeys (ns-key-vec nms oldkeys)]
     (clojure.set/rename-keys map (zipmap oldkeys newkeys))))
-(ns-keys-in-map "product" (first (:products @db-cache)))
 
-;; (clojure.set/rename-keys (first (:products @db-cache)) kmap)
+;; consider using spec to verify
+(def orig-product-keys
+   [:children
+    :slug
+    :parent
+    :bundles
+    :_cache_built
+    :category_names
+    :title
+    :categories
+    :id
+    :url
+    :product_class
+    :date_created
+    :_cache_expires
+    :skus
+    :_cache_now
+    :date_updated])
+(def output-product-keys
+  [:product/children
+    :product/slug
+    :product/parent
+    :product/bundles
+    :product/category_names
+    :product/title
+    :product/categories
+    :product/id
+    :product/url
+    :product/product_class
+    :product/date_created
+    :product/skus
+    :product/date_updated])
+(def product-kmap
+     {:children :product/children,
+      :slug :product/slug,
+      :parent :product/parent,
+      :bundles :product/bundles,
+      :category_names :product/category_names,
+      :title :product/title,
+      :categories :product/categories,
+      :id :product/id,
+      :url :product/url,
+      :product_class :product/product_class,
+      :date_created :product/date_created,
+      :skus :product/skus,
+      :date_updated :product/date_updated})
+
+
+
+
+
+
+(pco/defresolver all-products-resolver []
+  {::pco/output [{:products [output-product-keys]}]}
+  (p/->>
+   (json-get "https://dev.tempurpedic.com/api/products/")
+   (map #(clojure.set/rename-keys % product-kmap))
+   vec
+   (hash-map :products)))
 
 
 (pco/defresolver product-resolver [{:keys [product/id products]}]
@@ -115,31 +145,30 @@
    ))
 
 
-(map #((clojure.set/rename-keys % kmap)) (:products @db-cache))
-
 (def env
   (pci/register
-   ; TODO lookup API directly
-   [(pbir/constantly-resolver :products
-                              (->> @db-cache
-                                   :products
-                                   (map (partial ns-keys-in-map "product"))
-                                   vec))
+   [all-products-resolver
     product-resolver
     slug-resolver]
    ))
 
+(defn pres [p]
+  (p/let [res p]
+    (println res)))
+
 
 (comment
-  (p.eql/process env [{:products [:product/slug]}])
-  (p.eql/process env [{:products [:product/id]}])
-  (p.eql/process env [{:products [:product/title]}])
-  (p.eql/process env [{[:product/id 1] [:product/slug]}])
-  (p.eql/process env [{[:product/id 7] [:product/title]}])
-  (p.eql/process env [{[:product/id 7] output-product-keys}])
-  (p.eql/process env [{[:product/slug "grandpillow"] [:product/id]}])
+  (pres (p.a.eql/process env [:products]))
+  (pres (p.a.eql/process env [{:products [:product/slug]}]))
+  (pres (p.a.eql/process env [{:products [:product/id]}]))
+  (pres (p.a.eql/process env [{:products [:product/title]}]))
+  (pres (p.a.eql/process env [{[:product/id 1] [:product/slug]}]))
+  (pres (p.a.eql/process env [{[:product/id 7] [:product/title]}]))
+  (pres (p.a.eql/process env [{[:product/id 7] output-product-keys}]))
+  (pres (p.a.eql/process env [{[:product/slug "grandpillow"] [:product/id]}]))
   )
 
+(pres (p.a.eql/process env [{[:product/slug "grandpillow"] [:product/id]}]))
 
 
 (defn main-view []
