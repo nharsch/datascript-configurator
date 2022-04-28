@@ -4,6 +4,7 @@
    [cljs.core.async :refer [<!]]
    [cljs-http.client :as http]
    [reagent.dom :as rdom]
+   ;; [:as promesa.core p]
    [com.wsscode.pathom3.connect.operation :as pco]
    [com.wsscode.pathom3.connect.indexes :as pci]
    [com.wsscode.pathom3.connect.built-in.resolvers :as pbir]
@@ -73,6 +74,8 @@
   (vec (map (partial ns-key nms) v)))
 ;; (ns-key-vec "product" [:id :test])
 
+;; TODO makes these constants. Some of these keys might actually belong to another namespace...
+;; consider using spec to verify
 (def orig-product-keys
   (->> @db-cache
        :products
@@ -138,10 +141,13 @@
   )
 
 
+
 (defn main-view []
   [:div
    [:h1 "Hello World"]
-   ;; [:ul (map (fn [p] [:li (:title p)]) (:products @db-cache))]
+   [:ul (map #(vec [:li (:product/title %)])
+             (:products (p.eql/process env [{:products [:product/title]}])))
+    ]
    ]
   )
 

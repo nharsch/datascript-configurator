@@ -8,6 +8,7 @@
                 [re-frame "1.2.0"]
                 [cider/cider-nrepl "0.28.3"]
                 [com.wsscode/pathom3 "2021.07.10-1-alpha"]
+                [funcool/promesa "8.0.446"]
                 ]
 
 
