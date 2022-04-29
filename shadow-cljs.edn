@@ -9,6 +9,8 @@
                 [cider/cider-nrepl "0.28.3"]
                 [com.wsscode/pathom3 "2021.07.10-1-alpha"]
                 [funcool/promesa "8.0.446"]
+                [edn-query-language/eql "2021.07.18"]
+                [com.fulcrologic/fulcro "3.5.9"]
                 ]
 
 
@@ -20,7 +22,9 @@
 
  :dev-http {8080 "public"}
  :builds
- {:frontend
-  {:target :browser
-   :modules {:main {:init-fn configurator.frontend.app/init}}
+ {:frontend {:target :browser
+             :modules  {:main {:init-fn configurator.frontend.app/init}}
+             :devtools {:after-load configurator.frontend.app/refresh
+                        :preloads [com.fulcrologic.fulcro.inspect.preload
+                                   com.fulcrologic.fulcro.inspect.dom-picker-preload]}
    }}}
