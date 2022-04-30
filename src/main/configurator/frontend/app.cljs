@@ -94,6 +94,10 @@
       :skus :product/skus,
       :date_updated :product/date_updated})
 
+(def category-keys
+  ;; TODO
+  {})
+
 
 
 
@@ -126,12 +130,29 @@
    first
    ))
 
+;; TODO: could be better
+(defn extract-id-from-url [urlstring]
+  (let [url (new js/URL urlstring)]
+    (-> url
+         (.-pathname)
+         (.split "/")
+         reverse
+         second)))
+(extract-id-from-url "https://dev.tempurpedic.com/api/categories/1/")
+
+(pco/defresolver prod->cats [{:keys [product/id product/categories]}]
+  {::pco/output [{:product/categories  [:category/id]}]}
+  (println "prod->cats")
+  (vec (map extract-id-from-url categories)))
+
 
 (def env
   (pci/register
    [all-products-resolver
     product-resolver
-    slug-resolver]
+    slug-resolver
+    prod->cats
+    ]
    ))
 
 (defn pres [p]
@@ -148,9 +169,11 @@
   (pres (p.a.eql/process env [{[:product/id 7] [:product/title]}]))
   (pres (p.a.eql/process env [{[:product/id 7] output-product-keys}]))
   (pres (p.a.eql/process env [{[:product/slug "grandpillow"] [:product/id]}]))
+  (pres (p.a.eql/process env [{[:product/id 1] [:product/categories]}]))
   )
 
 (def pathom (p.a.eql/boundary-interface env))
+
 
 
 (defn pathom-remote [request]
