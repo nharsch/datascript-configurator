@@ -25,10 +25,6 @@
 ;;  - [] look at async-resolver
 ;; - [] get child attrs from child queries
 
-
-
-
-
 (defn json-get [url]
   (p/let [resp (js/fetch url)
           json (.json resp)]
@@ -185,8 +181,8 @@
     all-products-resolver
     product-resolver
     slug-resolver
-    ;; all-category-resolver
-    ;; category-resolver
+    all-category-resolver
+    category-resolver
     caturl->id
     ]))
 
@@ -196,7 +192,7 @@
 ;; test queries
 (comment
   (pres (p.a.eql/process env [:products]))
-  ;; (pres (p.a.eql/process env [:categories]))
+  (pres (p.a.eql/process env [:categories]))
   (pres (p.a.eql/process env [{:products [:product/id]}]))
   (pres (p.a.eql/process env [{:categories [:category/id]}]))
   (pres (p.a.eql/process env [{:products [:product/slug]}]))
@@ -212,9 +208,10 @@
 (def pathom (p.a.eql/boundary-interface env))
 
 
-
 (defn pathom-remote [request]
+  (println "pathom-remote called" request)
   {:transmit! (fn transmit! [_ {::txn/keys [ast result-handler]}]
+                (println "transmit called" ast result-handler)
                 (let [ok-handler    (fn [result]
                                       (try
                                         (result-handler (assoc result :status-code 200))
@@ -228,9 +225,11 @@
                       key           (-> ast :children first :key)
                       entity        (some-> ast :children first :query meta :pathom/entity)
                       ident-ent     {key (conj entity key)}]
+                  (println key "key" entity "entity" ident-ent "ident-ent")
                   (-> (p/let [res (request
                                     (cond-> {:pathom/ast ast}
                                       entity (assoc :pathom/entity ident-ent)))]
+                        (println "remote res" res)
                         (ok-handler {:transaction (eql/ast->query ast)
                                      :body        res}))
                       (p/catch (fn [e]
@@ -238,66 +237,67 @@
                                  (error-handler {:error e}))))))})
 
 ;; ---- FULCRO -----
-(defonce app (app/fulcro-app
-              {
-               :remotes {:remote (pathom-remote pathom)}
-               }))
+(def app (app/fulcro-app
+              {:remotes {:remote (pathom-remote pathom)}}))
 
 
 (defsc ProductTile [this {:product/keys [id title slug] :as props}]
   {:query [:product/id :product/title :product/slug]
-   :ident (fn [] [:product/id (:product/id props)])
-   :initial-state (fn [{:keys [id title slug] :as params}]
-                    {:product/id id
-                     :product/title title
-                     :product/slug slug})}
+   :ident (fn [] [:product/id (:product/id props)])}
   (dom/li
    (dom/ul
     (dom/li (str "title: " title))
     (dom/li (str "slug: " slug)))))
 
-(def ui-product-tile (comp/factory ProductTile))
+(def ui-product-tile (comp/factory ProductTile {:keyfn :product/id}))
 
 (defsc ProductList [this {:keys [products]}]
   (dom/div
    (dom/h1 "Products")
-   (println products)
    (dom/ul
     (map ui-product-tile products))))
 (def ui-product-list (comp/factory ProductList))
 
-;; (defsc CategoryItem [this {:category/keys [id name] :as props}]
-;;   {:query [:category/id :category/name]}
-;;   {:ident (fn [] [:category/id (:category/id props)])}
-;;   (dom/li
-;;    (dom/ul
-;;     (dom/li (str "name" name)))))
-;; (def ui-category-item (comp/factory CategoryItem))
 
-;; (defsc CategoryChooser [this {:keys [categories]}]
-;;   (dom/div
-;;    (dom/h1 "Categories")
-;;    (dom/ul
-;;     (map ui-category-item categories))))
-;; (def ui-category-chooser (comp/factory CategoryChooser))
+(defsc CategoryItem [this {:category/keys [id name] :as props}]
+  {:query [:category/id :category/name]}
+  {:ident (fn [] [:category/id (:category/id props)])}
+  (dom/li
+   (dom/ul
+    (dom/li (str "name: " name)))))
+(def ui-category-item (comp/factory CategoryItem {:keyfn :category/id}))
 
-(defsc Root [this {:keys [products]}]
-  {:query [{:products (comp/get-query ProductTile)}]
-   :initial-state (fn [params] {:products [(comp/get-initial-state ProductTile {:product/id 0 :product/title "test" :product/slug "slug"})
-                                           (comp/get-initial-state ProductTile {:product/id 1 :product/title "test1" :product/slug "slug1"})]})}
+(defsc CategoryChooser [this {:keys [categories]}]
+  (dom/div
+   (dom/h1 "Categories")
+   (dom/ul
+    (map ui-category-item categories))))
+(def ui-category-chooser (comp/factory CategoryChooser))
+
+(defsc Root [this {:keys [products categories]}]
+  {:query [{:products (comp/get-query ProductTile)}
+           {:categories (comp/get-query CategoryItem)}]
+   :initial-state (fn [{:keys [products categories]}]
+                    {:products [{:product/title "Test Product" :product/slug "test-product"}]
+                     :categories [{:category/name "Test Cat" :category/slug "test-cat"}]})}
   (dom/div {:className "a" :id "id"}
            (dom/p "Hello")
-           (ui-product-list {:products  products})))
+           (println "cats" categories)
+           (println "prods" products)
+           (ui-category-chooser {:categories categories})
+           (ui-product-list {:products products})))
 
+
+;; (pres (p.a.eql/process env [{:products (comp/get-query ProductTile)}
+;;                             {:categories (comp/get-query CategoryItem)}]))
 
 (defn ^:export init []
   (app/mount! app Root "app")
   (df/load! app :products Root)
+  (df/load! app :categories Root)
   (println "Loaded app"))
 
-(defn ^:export refresh
-  "Shadow hot reload support"
-  []
+(defn ^:export refresh []
   (app/mount! app Root "app")
   (comp/refresh-dynamic-queries! app)
   (println "Hot reload"))
