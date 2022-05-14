@@ -202,6 +202,7 @@
   (pres (p.a.eql/process env [{[:product/id 7] output-product-keys}]))
   (pres (p.a.eql/process env [{[:category/id 2] category-output-keys}]))
   (pres (p.a.eql/process env [{[:product/slug "grandpillow"] [:product/id]}]))
+  (pres (p.a.eql/process env [{:products [:product/id :product/title :product/slug]}]))
 )
 
 
@@ -209,9 +210,9 @@
 
 
 (defn pathom-remote [request]
-  (println "pathom-remote called" request)
+  ;; (println "pathom-remote called" request)
   {:transmit! (fn transmit! [_ {::txn/keys [ast result-handler]}]
-                (println "transmit called" ast result-handler)
+                ;; (println "transmit called" ast result-handler)
                 (let [ok-handler    (fn [result]
                                       (try
                                         (result-handler (assoc result :status-code 200))
@@ -225,11 +226,11 @@
                       key           (-> ast :children first :key)
                       entity        (some-> ast :children first :query meta :pathom/entity)
                       ident-ent     {key (conj entity key)}]
-                  (println key "key" entity "entity" ident-ent "ident-ent")
+                  ;; (println key "key" entity "entity" ident-ent "ident-ent")
                   (-> (p/let [res (request
                                     (cond-> {:pathom/ast ast}
                                       entity (assoc :pathom/entity ident-ent)))]
-                        (println "remote res" res)
+                        ;; (println "remote res" res)
                         (ok-handler {:transaction (eql/ast->query ast)
                                      :body        res}))
                       (p/catch (fn [e]
@@ -243,13 +244,17 @@
 
 (defsc ProductTile [this {:product/keys [id title slug] :as props}]
   {:query [:product/id :product/title :product/slug]
-   :ident (fn [] [:product/id (:product/id props)])}
-  (dom/li
-   (dom/ul
-    (dom/li (str "title: " title))
-    (dom/li (str "slug: " slug)))))
+   ;; :ident (fn [] [:product/id (:product/id props)])
+   }
+  (dom/li {:key id}
+   (dom/div
+    (dom/p (str "title: " title))
+    (dom/p (str "slug: " slug)))))
 
-(def ui-product-tile (comp/factory ProductTile {:keyfn :product/id}))
+(def ui-product-tile
+  (comp/factory ProductTile
+                ;; {:keyfn :product/id}
+                ))
 
 (defsc ProductList [this {:keys [products]}]
   (dom/div
@@ -260,8 +265,8 @@
 
 
 (defsc CategoryItem [this {:category/keys [id name] :as props}]
-  {:query [:category/id :category/name]}
-  {:ident (fn [] [:category/id (:category/id props)])}
+  {:query [:category/id :category/name]
+   :ident (fn [] [:category/id (:category/id props)])}
   (dom/li
    (dom/ul
     (dom/li (str "name: " name)))))
@@ -274,17 +279,24 @@
     (map ui-category-item categories))))
 (def ui-category-chooser (comp/factory CategoryChooser))
 
-(defsc Root [this {:keys [products categories]}]
+(defsc Root [this {:keys [
+                          products
+                          ;; categories
+                          ]}]
   {:query [{:products (comp/get-query ProductTile)}
-           {:categories (comp/get-query CategoryItem)}]
+           ;; {:Categories (comp/get-query CategoryItem)}
+           ]
    :initial-state (fn [{:keys [products categories]}]
-                    {:products [{:product/title "Test Product" :product/slug "test-product"}]
-                     :categories [{:category/name "Test Cat" :category/slug "test-cat"}]})}
+                    {:products [{:product/id 0 :product/title "Test Product" :product/slug "test-product"}]
+                     ;; :categories [{:category/name "Test Cat" :category/slug "test-cat"}]
+                     }
+                    )
+   }
   (dom/div {:className "a" :id "id"}
            (dom/p "Hello")
-           (println "cats" categories)
-           (println "prods" products)
-           (ui-category-chooser {:categories categories})
+           ;; (println "cats" categories)
+           ;; (println "prods" products)
+           ;; (ui-category-chooser {:categories categories})
            (ui-product-list {:products products})))
 
 
