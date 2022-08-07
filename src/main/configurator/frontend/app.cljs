@@ -232,9 +232,9 @@
 
 
 ;; ---- FULCRO -----
-(defsc ProductTile [this {:product/keys [id title slug]}]
+(defsc ProductTile [this {:product/keys [id title slug] :as props}]
   {:query [:product/id :product/title :product/slug]
-   ;; :ident (fn [] [:product/id (:product/id props)])
+   :ident (fn [] [:product/id (:product/id props)])
    :initial-state (fn [{:keys [id title slug]}]
                     {:product/id id
                      :product/title title
@@ -247,9 +247,7 @@
            (dom/p (str "slug: " slug)))))
 
 (def ui-product-tile
-  (comp/factory ProductTile
-                ;; {:keyfn :product/id}
-                ))
+  (comp/factory ProductTile))
 
 (defsc ProductList [this {:keys [products]}]
   {:query [{:products (comp/get-query ProductTile)}]
@@ -262,17 +260,33 @@
   (dom/div
    (dom/h1 "Products")
    (dom/ul
-    (map ui-product-tile products))))
+    (map ui-product-tile (:products (first products))))))
 (def ui-product-list (comp/factory ProductList))
 
+;; Category components
+(defsc CategoryItem [this {:category/keys [id name] :as props}]
+  {:query [:category/id :category/name]
+   :ident (fn [] [:category/id (:category/id props)])
+   :initial-state (fn [{:keys [id name]}]
+                    {:category/id id
+                     :category/name name})}
+  (dom/li
+   (dom/div
+    (dom/p (str "name: " name)))))
+(def ui-category-item (comp/factory CategoryItem {:keyfn :category/id}))
 
-;; (defsc CategoryItem [this {:category/keys [id name] :as props}]
-;;   {:query [:category/id :category/name]
-;;    :ident (fn [] [:category/id (:category/id props)])}
-;;   (dom/li
-;;    (dom/ul
-;;     (dom/li (str "name: " name)))))
-;; (def ui-category-item (comp/factory CategoryItem {:keyfn :category/id}))
+(defsc CategoryList [this {:keys [categories]}]
+  {:query [{:categories (comp/get-query CategoryItem)}]
+   :initial-state (fn [{:keys []}]
+                      {:categories [comp/get-initial-state CategoryItem {:id 0 :name "Test Category"}]})}
+  (println "cats" categories)
+  (dom/div
+   (dom/h1 "Categories")
+   (dom/ul
+    (map ui-category-item (:categories (first categories))))))
+(def ui-category-list (comp/factory CategoryList))
+
+
 
 ;; (defsc CategoryChooser [this {:keys [categories]}]
 ;;   (dom/div
@@ -281,28 +295,33 @@
 ;;     (map ui-category-item categories))))
 ;; (def ui-category-chooser (comp/factory CategoryChooser))
 
-;; (defsc Root [this {:keys [products]}]
-;;   {:query []
-;;    :initial-state (fn [{:keys [app]}]
-;;                     {:products [{:product/id 0
-;;                                  :product/title "Test Product"
-;;                                  :product/slug "test-product"}]})}
-;;   (dom/div {:className "a" :id "id"}
-;;            (dom/p "Hello")
-;;            (ui-product-list {:products products})))
+(defsc Root [this {:keys [products categories]}]
+  {:query [{:products (comp/get-query ProductList)}
+           {:categories (comp/get-query CategoryList)}]
+   :initial-state (fn [{:keys [app]}]
+                    {:products [{:product/id 0
+                                 :product/title "Test Product"
+                                 :product/slug "test-product"}]
+                     :categories [{:category/id 0
+                                   :category/name "Test Category"}]
+                     })}
+  (dom/div {:className "root" :id "id"}
+           (dom/p "Hello")
+           (ui-product-list {:products products})
+           (ui-category-list {:categories categories})))
 
 (comment
   (pres (p.a.eql/process env [:all-products (comp/get-query ProductList)]))
   )
 
-(def pathom (p.a.eql/boundary-interface env))
+(def pathom-interface (p.a.eql/boundary-interface env))
 
 
 ;; Connect to PATHOM
 (defn pathom-remote [request]
   ;; (PRINTLN "pathom-remote called" request)
   {:transmit! (fn transmit! [_ {::txn/keys [ast result-handler]}]
-                ;; (println "transmit called" ast result-handler)
+                (println "transmit called" ast result-handler)
                 (let [ok-handler    (fn [result]
                                       (try
                                         (result-handler (assoc result :status-code 200))
@@ -320,21 +339,22 @@
                   (-> (p/let [res (request
                                    (cond-> {:pathom/ast ast}
                                      entity (assoc :pathom/entity ident-ent)))]
-                        (println "remote response" res)
+                        ;; (println "remote response" res)
                         (ok-handler {:transaction (eql/ast->query ast)
                                      :body        res}))
                       (p/catch (fn [e]
                                  (js/console.error "Pathom Remote Error" e)
                                  (error-handler {:error e}))))))})
 
-(def app (app/fulcro-app {:remotes {:remote (pathom-remote pathom)}}))
+(def app (app/fulcro-app {:remotes {:remote (pathom-remote pathom-interface)}}))
 
 (defn ^:export init []
-  (app/mount! app ProductList "app")
-  (df/load! app :all-products ProductList)
+  (app/mount! app Root "app")
+  (df/load! app :products ProductList)
+  (df/load! app :categories CategoryList)
   (println "Loaded app"))
 
 (defn ^:export refresh []
-  (app/mount! app ProductList "app")
+  (app/mount! app Root "app")
   (comp/refresh-dynamic-queries! app)
   (println "Hot reload"))
