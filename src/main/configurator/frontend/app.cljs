@@ -22,13 +22,20 @@
 ;; - [] convert default keywords to product/kw
 ;; - [] resolve query by hitting API endpoint
 ;; - [] get child ids from children URLs
-;;  - [] look at async-resolver
+;; - [] look at async-resolver
 ;; - [] get child attrs from child queries
+(defn pres [p]
+  (p/let [res p]
+    (println res)))
 
 (defn json-get [url]
-  (p/let [resp (js/fetch url)
-          json (.json resp)]
+  (p/let [json (.then (js/fetch url)
+                    #(.json %))]
     (js->clj json :keywordize-keys true)))
+
+;; (.then (json-get "https://dev.tempurpedic.com/api/products") prn)
+
+
 
 (defn ns-key [nms key]
   (keyword (str nms "/" (name key))))
@@ -43,7 +50,7 @@
         newkeys (ns-key-vec nms oldkeys)]
     (clojure.set/rename-keys map (zipmap oldkeys newkeys))))
 
-;; consider using spec to verify
+;; TODO: consider using spec to verify
 (def orig-product-keys
    [:children
     :slug
@@ -61,20 +68,23 @@
     :skus
     :_cache_now
     :date_updated])
+
 (def output-product-keys
   [:product/children
-    :product/slug
-    :product/parent
-    :product/bundles
-    :product/category_names
-    :product/title
-    :product/categories
-    :product/id
-    :product/url
-    :product/product_class
-    :product/date_created
-    :product/skus
-    :product/date_updated])
+   :product/slug
+   :product/parent
+   :product/bundles
+   :product/category_names
+   :product/title
+   :product/category-urls
+   :product/id
+   :product/url
+   :product/product_class
+   :product/date_created
+   :product/skus
+   :product/date_updated])
+
+;; add product/ to key to avoid confusion with category
 (def product-kmap
      {:children :product/children,
       :slug :product/slug,
@@ -82,7 +92,7 @@
       :bundles :product/bundles,
       :category_names :product/category_names,
       :title :product/title,
-      :categories :product/categories,
+      :categories :product/category-urls,
       :id :product/id,
       :url :product/url,
       :product_class :product/product_class,
@@ -101,6 +111,7 @@
    :url
    :image
    :depth])
+
 (def category-output-keys
   [:category/description
    :category/children
@@ -116,16 +127,20 @@
 
 
 (pco/defresolver all-products-resolver []
-  {::pco/output [{:all-products {:products  [output-product-keys]}}]}
+  {::pco/output [{:products  [output-product-keys]}]}
   (p/->>
    (json-get "https://dev.tempurpedic.com/api/products/")
    (map #(clojure.set/rename-keys % product-kmap))
    vec
    (hash-map :products)
-   (hash-map :all-products)))
+   ;; (hash-map :all-products)
+   )
+)
+
+
 
 (pco/defresolver all-category-resolver []
-  {::pco/output [:all-categories {:categories [output-product-keys]}]}
+  {::pco/output [{:categories [category-output-keys]}]}
   (p/->>
    (json-get "https://dev.tempurpedic.com/api/categories/")
    (map #(clojure.set/rename-keys % cat-kmap))
@@ -133,7 +148,7 @@
    (hash-map :categories)))
 
 
-(pco/defresolver product-resolver [{:keys [product/id products]}]
+(pco/defresolver product-id-resolver [{:keys [product/id products]}]
   {::pco/output output-product-keys}
   (->>
    products
@@ -141,7 +156,8 @@
    first
    ))
 
-(pco/defresolver category-resolver [{:keys [category/id categories]}]
+
+(pco/defresolver category-id-resolver [{:keys [category/id categories]}]
   {::pco/output category-output-keys}
   (->>
    categories
@@ -149,7 +165,7 @@
    first
    ))
 
-(pco/defresolver slug-resolver [{:keys [product/slug products]}]
+(pco/defresolver product-slug-resolver [{:keys [product/slug products]}]
   {::pco/output output-product-keys}
   (->>
    products
@@ -157,54 +173,59 @@
    first
    ))
 
-;; TODO: could be better
 (defn extract-id-from-url [urlstring]
   (let [url (new js/URL urlstring)]
     (-> url
          (.-pathname)
          (.split "/")
          reverse
-         second)))
-(extract-id-from-url "https://dev.tempurpedic.com/api/categories/1/")
+         second
+         int)))
 
-(pco/defresolver caturl->id
-  [{:keys [product/categories]}]
-  ;; (println "prod->cats")
-  {:product/category-ids
-   (->> categories
+(pco/defresolver caturls->ids
+  [{:keys [product/category-urls categories]}]
+  {:product/categories
+   (->> category-urls
         (map extract-id-from-url)
         (map (partial hash-map :category/id))
         vec)})
+
+(comment
+  (pres (p.a.eql/process env [{[:product/id 7] [:product/category-ids :product/categories]}]))
+  )
 
 (def env
   (pci/register
    [
     all-products-resolver
-    product-resolver
-    slug-resolver
+    product-id-resolver
+    product-slug-resolver
     all-category-resolver
-    category-resolver
-    caturl->id
+    category-id-resolver
+    caturls->ids
     ]))
 
-(defn pres [p]
-  (p/let [res p]
-    (println res)))
+
 ;; test queries
 (comment
-  (pres (p.a.eql/process env [:all-products]))
+  (pres (p.a.eql/process env [:products]))
   (pres (p.a.eql/process env [:categories]))
-  (pres (p.a.eql/process env [{:all-products [:product/id]}]))
+  (pres (p.a.eql/process env [{:products [:product/id]}]))
   (pres (p.a.eql/process env [{:categories [:category/id]}]))
-  (pres (p.a.eql/process env [{:all-products [:product/slug]}]))
-  (pres (p.a.eql/process env [{:all-products [:product/title]}]))
+  (pres (p.a.eql/process env [{:products [:product/slug]}]))
+  (pres (p.a.eql/process env [{:products [:product/title]}]))
   (pres (p.a.eql/process env [{[:product/id 1] [:product/title :product/slug]}]))
-  (pres (p.a.eql/process env [{[:product/id 7] [:product/categories :product/category-ids]}]))
+  (pres (p.a.eql/process env [{[:product/id 7] [:product/category-urls]}]))
+  (pres (p.a.eql/process env [{[:product/id 7] [:product/category-ids]}]))
+  (pres (p.a.eql/process env [{[:category/id 28] [:category/name]}]))
+  (pres (p.a.eql/process env [{[:product/id 7] [:product/slug {:product/categories [:category/id :category/name]}]}]))
+  (pres (p.a.eql/process env [{[:product/id 7] [:product/categories]}]))
   (pres (p.a.eql/process env [{[:product/id 7] output-product-keys}]))
   (pres (p.a.eql/process env [{[:category/id 2] category-output-keys}]))
   (pres (p.a.eql/process env [{[:product/slug "grandpillow"] [:product/id]}]))
-  (pres (p.a.eql/process env [:all-products {:products [:product/id :product/title :product/slug]}]))
-)
+  (pres (p.a.eql/process env [{[:product/slug "tempur-adjustable-support-pillow-bundle"] [:product/id]}]))
+  (pres (p.a.eql/process env [:products {:products [:product/id :product/title :product/slug]}]))
+  )
 
 
 
@@ -276,6 +297,8 @@
 
 (def pathom (p.a.eql/boundary-interface env))
 
+
+;; Connect to PATHOM
 (defn pathom-remote [request]
   ;; (PRINTLN "pathom-remote called" request)
   {:transmit! (fn transmit! [_ {::txn/keys [ast result-handler]}]
@@ -315,5 +338,3 @@
   (app/mount! app ProductList "app")
   (comp/refresh-dynamic-queries! app)
   (println "Hot reload"))
-
-;; (refresh)
