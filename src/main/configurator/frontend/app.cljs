@@ -209,6 +209,8 @@
 ;; test queries
 (comment
   (pres (p.a.eql/process env [:products]))
+  ;; TODO: get parameterized ids to work
+  ;; (pres (p.a.eql/process env ['(:products {:product/id 1})]))
   (pres (p.a.eql/process env [:categories]))
   (pres (p.a.eql/process env [{:products [:product/id]}]))
   (pres (p.a.eql/process env [{:categories [:category/id]}]))
@@ -220,6 +222,7 @@
   (pres (p.a.eql/process env [{[:category/id 28] [:category/name]}]))
   (pres (p.a.eql/process env [{[:product/id 7] [:product/slug {:product/categories [:category/id :category/name]}]}]))
   (pres (p.a.eql/process env [{[:product/id 7] [:product/categories]}]))
+  (pres (p.a.eql/process env [{[:product/id 7] output-product-keys}]))
   (pres (p.a.eql/process env [{[:product/id 7] output-product-keys}]))
   (pres (p.a.eql/process env [{[:category/id 2] category-output-keys}]))
   (pres (p.a.eql/process env [{[:product/slug "grandpillow"] [:product/id]}]))
@@ -299,11 +302,11 @@
   {:query [{:products (comp/get-query ProductList)}
            {:categories (comp/get-query CategoryList)}]
    :initial-state (fn [{:keys [app]}]
-                    {:products [{:product/id 0
-                                 :product/title "Test Product"
-                                 :product/slug "test-product"}]
-                     :categories [{:category/id 0
-                                   :category/name "Test Category"}]
+                    {:products [{:products [{:product/id 0
+                                             :product/title "Test Product"
+                                             :product/slug "test-product"}]}]
+                     :categories [{:categories  [{:category/id 0
+                                                  :category/name "Test Category"}]}]
                      })}
   (dom/div {:className "root" :id "id"}
            (dom/p "Hello")
