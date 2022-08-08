@@ -126,18 +126,20 @@
 (def cat-kmap (zipmap category-input-keys category-output-keys))
 
 
-(pco/defresolver all-products-resolver []
+(pco/defresolver all-products-resolver [env _]
   {::pco/output [{:products  [output-product-keys]}]}
   (p/->>
    (json-get "https://dev.tempurpedic.com/api/products/")
    (map #(clojure.set/rename-keys % product-kmap))
+   (#(if-some [product-ids (get (pco/params env) :product/ids)]
+      (filter
+       (fn [p] (contains? (set product-ids) (:product/id p))) %)
+      %))
    vec
    (hash-map :products)
-   ;; (hash-map :all-products)
-   )
-)
+   ))
 
-
+(filter  #(contains? #{1 2 3} %) [3 4 5])
 
 (pco/defresolver all-category-resolver []
   {::pco/output [{:categories [category-output-keys]}]}
@@ -155,6 +157,8 @@
    (filter (fn [p] (== id (:product/id p))))
    first
    ))
+
+
 
 
 (pco/defresolver category-id-resolver [{:keys [category/id categories]}]
@@ -190,9 +194,7 @@
         (map (partial hash-map :category/id))
         vec)})
 
-(comment
-  (pres (p.a.eql/process env [{[:product/id 7] [:product/category-ids :product/categories]}]))
-  )
+
 
 (def env
   (pci/register
@@ -210,7 +212,7 @@
 (comment
   (pres (p.a.eql/process env [:products]))
   ;; TODO: get parameterized ids to work
-  ;; (pres (p.a.eql/process env ['(:products {:product/id 1})]))
+  (pres (p.a.eql/process env ['(:products {:product/ids [1 4 13]})]))
   (pres (p.a.eql/process env [:categories]))
   (pres (p.a.eql/process env [{:products [:product/id]}]))
   (pres (p.a.eql/process env [{:categories [:category/id]}]))
@@ -259,7 +261,6 @@
                                 (comp/get-initial-state ProductTile {:id 1 :title "test title 1" :slug "test-slug-1"})
                                 ]})
    }
-  (println "prods" products)
   (dom/div
    (dom/h1 "Products")
    (dom/ul
@@ -282,7 +283,6 @@
   {:query [{:categories (comp/get-query CategoryItem)}]
    :initial-state (fn [{:keys []}]
                       {:categories [comp/get-initial-state CategoryItem {:id 0 :name "Test Category"}]})}
-  (println "cats" categories)
   (dom/div
    (dom/h1 "Categories")
    (dom/ul
@@ -324,7 +324,7 @@
 (defn pathom-remote [request]
   ;; (PRINTLN "pathom-remote called" request)
   {:transmit! (fn transmit! [_ {::txn/keys [ast result-handler]}]
-                (println "transmit called" ast result-handler)
+                ;; (println "transmit called" ast)
                 (let [ok-handler    (fn [result]
                                       (try
                                         (result-handler (assoc result :status-code 200))
@@ -354,6 +354,7 @@
 (defn ^:export init []
   (app/mount! app Root "app")
   (df/load! app :products ProductList)
+  ;; (df/load! app :products ProductList {:params {:pathom-context {:product/ids [1 4 13]}}})
   (df/load! app :categories CategoryList)
   (println "Loaded app"))
 
